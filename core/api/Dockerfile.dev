@@ -1,0 +1,27 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Install Docker CLI (for managing containers)
+RUN apk add --no-cache docker-cli
+
+# Install nodemon for development
+RUN npm install -g nodemon
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Create required directories
+RUN mkdir -p /app/tools /app/data
+
+# Expose port
+EXPOSE 3001
+
+# Start the development server
+CMD ["npm", "run", "dev"]

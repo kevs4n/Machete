@@ -1,0 +1,61 @@
+# MACHETE Platform .gitignore
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Data directories
+/data/
+/tools/*/
+!/tools/_template/
+
+# Caddy data
+/core/caddy/data/
+/core/caddy/config/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Runtime
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Build outputs
+build/
+dist/
+out/
+
+# Coverage
+coverage/
+*.lcov
+
+# Temporary files
+tmp/
+temp/
+
+# Backup files
+*.bak
+*.backup

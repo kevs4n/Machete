@@ -1,0 +1,86 @@
+# MACHETE Tool Configuration
+# This file defines how MACHETE should install and configure your tool
+
+# Tool metadata
+name: "my-tool"
+version: "1.0.0"
+description: "A brief description of what this tool does"
+author: "Your Name <your.email@company.com>"
+license: "MIT"
+repository: "https://github.com/your-org/your-tool"
+
+# MACHETE configuration
+machete:
+  # Minimum MACHETE version required
+  version: ">=1.0.0"
+  
+  # Tool category (affects UI grouping)
+  # Options: automation, devops, testing, analysis, monitoring, security, collaboration, other
+  category: "automation"
+  
+  # Port your tool runs on
+  port: 8080
+  
+  # Health check endpoint (returns 200 when healthy)
+  health_check: "/health"
+  
+  # Environment variables to set
+  environment:
+    - NODE_ENV=production
+    - LOG_LEVEL=info
+    
+  # Volume mounts for persistent data
+  volumes:
+    - "./data:/app/data"
+    - "./config:/app/config"
+    
+  # Dependencies (other services this tool needs)
+  # dependencies:
+  #   - postgresql
+  #   - redis
+
+# Tool-specific configuration
+config:
+  # Default configuration values
+  timeout: 30
+  max_requests: 100
+  
+# UI configuration
+ui:
+  # Icon (emoji or URL to icon file in your repo)
+  icon: "🔧"
+  
+  # Primary color (hex code)
+  color: "#ff6b35"
+  
+  # Tool routes for MACHETE navigation
+  routes:
+    - path: "/"
+      title: "Dashboard"
+      description: "Main tool interface"
+    - path: "/settings"
+      title: "Settings"
+      description: "Tool configuration"
+
+# Resource limits (optional)
+resources:
+  memory: "512Mi"
+  cpu: "500m"
+  
+# Permissions (optional)
+permissions:
+  # Docker access (if tool needs to manage containers)
+  docker: false
+  
+  # File system access
+  filesystem:
+    read_only: false
+    
+# Setup script (optional)
+setup:
+  # Script to run after installation
+  script: "./scripts/setup.sh"
+  
+  # Files to copy to MACHETE config
+  config_files:
+    - "config/default.json"

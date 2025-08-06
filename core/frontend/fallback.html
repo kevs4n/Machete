@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MACHETE Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #ff6b35 0%, #004e89 100%);
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .logo {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            margin-top: 10px;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .card-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            color: #ff6b35;
+        }
+        .card-title {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .card-description {
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.6;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        .status.available {
+            background: rgba(76, 175, 80, 0.3);
+            color: #4CAF50;
+        }
+        .status.coming-soon {
+            background: rgba(255, 193, 7, 0.3);
+            color: #FFC107;
+        }
+        .install-btn {
+            background: linear-gradient(135deg, #ff6b35 0%, #004e89 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+        .install-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(255, 107, 53, 0.4);
+        }
+        .api-info {
+            background: rgba(0, 78, 137, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 40px;
+            border-left: 4px solid #004e89;
+        }
+        .api-link {
+            color: #ff6b35;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .api-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🔪 MACHETE</div>
+        <div class="subtitle">Multi-purpose Automation & Configuration Hub for Engineering Tools and Execution</div>
+    </div>
+
+    <div class="container">
+        <h1 style="text-align: center; margin-bottom: 10px;">Available Tools</h1>
+        <p style="text-align: center; color: rgba(255,255,255,0.7);">Install and manage your engineering automation tools</p>
+        
+        <div class="grid">
+            <!-- Built-in tools (coming soon) -->
+            <div class="card" onclick="showComingSoon('Azure DevOps')">
+                <div class="card-icon">🏗️</div>
+                <div class="card-title">Azure DevOps Process Creation</div>
+                <div class="card-description">Create and manage Azure DevOps process templates with automated workflows</div>
+                <div class="status coming-soon">COMING SOON</div>
+            </div>
+
+            <div class="card" onclick="showComingSoon('Fasttrack')">
+                <div class="card-icon">⚡</div>
+                <div class="card-title">Fasttrack Process Model Import</div>
+                <div class="card-description">Import and manage Fasttrack process models for rapid deployment</div>
+                <div class="status coming-soon">COMING SOON</div>
+            </div>
+
+            <!-- Install new tool card -->
+            <div class="card" onclick="showInstallDialog()">
+                <div class="card-icon">📥</div>
+                <div class="card-title">Install New Tool</div>
+                <div class="card-description">Add new tools from Git repositories to expand your automation capabilities</div>
+                <button class="install-btn" onclick="event.stopPropagation(); showInstallDialog()">
+                    Install Tool
+                </button>
+            </div>
+
+            <!-- Dynamic tools will be inserted here -->
+            <div id="dynamic-tools"></div>
+        </div>
+
+        <div class="api-info">
+            <h3>Platform Status</h3>
+            <p>✅ MACHETE Platform is running successfully</p>
+            <p>✅ API Health: <a href="/api/health" class="api-link" target="_blank">Check API Status</a></p>
+            <p>✅ Frontend: Fallback HTML Interface (React will be restored)</p>
+            <p style="margin-top: 15px;">
+                <strong>📖 Tool Development:</strong> 
+                <a href="https://github.com/your-org/machete/blob/main/docs/QUICK_REFERENCE.md" class="api-link" target="_blank">Quick Reference</a> | 
+                <a href="https://github.com/your-org/machete/blob/main/docs/TOOL_DEVELOPMENT.md" class="api-link" target="_blank">Full Guide</a>
+            </p>
+            <p style="margin-top: 15px; font-size: 0.9rem; color: rgba(255,255,255,0.6);">
+                This is a temporary HTML interface while we fix the React frontend. 
+                All core functionality is working.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        console.log('MACHETE Platform loaded successfully');
+        
+        // Load installed tools on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadInstalledTools();
+            // Refresh tools every 30 seconds
+            setInterval(loadInstalledTools, 30000);
+        });
+        
+        async function loadInstalledTools() {
+            try {
+                const response = await fetch('/api/tools/dashboard');
+                const tools = await response.json();
+                
+                const dynamicToolsContainer = document.getElementById('dynamic-tools');
+                if (!dynamicToolsContainer) return;
+                
+                // Clear existing dynamic tools
+                dynamicToolsContainer.innerHTML = '';
+                
+                // Add each tool as a card
+                tools.forEach(tool => {
+                    const toolCard = createToolCard(tool);
+                    dynamicToolsContainer.appendChild(toolCard);
+                });
+                
+                console.log(`Loaded ${tools.length} installed tools`);
+            } catch (error) {
+                console.error('Error loading tools:', error);
+            }
+        }
+        
+        function createToolCard(tool) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.borderLeft = `4px solid ${tool.color}`;
+            card.onclick = () => openTool(tool);
+            
+            const statusClass = tool.status === 'running' ? 'available' : 'coming-soon';
+            const statusText = tool.status === 'running' ? 'RUNNING' : tool.status.toUpperCase();
+            
+            card.innerHTML = `
+                <div class="card-icon" style="color: ${tool.color}">${tool.icon}</div>
+                <div class="card-title">${tool.name}</div>
+                <div class="card-description">${tool.description}</div>
+                <div class="status ${statusClass}">${statusText}</div>
+                ${tool.status === 'running' ? `
+                    <button class="install-btn" onclick="event.stopPropagation(); openTool(tool)" style="background: ${tool.color}">
+                        Open Tool
+                    </button>
+                ` : ''}
+            `;
+            
+            return card;
+        }
+        
+        function openTool(tool) {
+            if (tool.status === 'running') {
+                // Open tool in new tab/window
+                window.open(tool.url, '_blank');
+            } else {
+                alert(`${tool.name} is currently ${tool.status}.\n\nPlease wait for it to start or check the tool status.`);
+            }
+        }
+        
+        function showComingSoon(toolName) {
+            alert(`${toolName} tool will be available soon!\n\nThis tool will be installed as a separate Git repository and containerized automatically by the MACHETE platform.`);
+        }
+        
+        function showInstallDialog() {
+            const gitUrl = prompt(`Install New Tool\n\nEnter the Git repository URL:`);
+            if (gitUrl) {
+                const toolName = prompt(`Tool Name:`);
+                if (toolName) {
+                    installTool(toolName, gitUrl);
+                }
+            }
+        }
+        
+        async function installTool(name, gitUrl) {
+            try {
+                // Show installing message
+                alert(`Installing ${name}...\n\nThis may take a few minutes. The page will refresh when complete.`);
+                
+                const response = await fetch('/api/tools/install', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        gitUrl: gitUrl,
+                        description: 'Tool installed via web interface'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`Success!\n\n${name} has been installed successfully.\n\nThe tool is now being built and will be available shortly.`);
+                    // Refresh the tools list
+                    loadInstalledTools();
+                } else {
+                    alert(`Error installing tool:\n\n${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`Network error:\n\n${error.message}`);
+            }
+        }
+        
+        // Test API connectivity
+        fetch('/api/health')
+            .then(response => response.json())
+            .then(data => {
+                console.log('API Health Check:', data);
+            })
+            .catch(error => {
+                console.error('API Health Check failed:', error);
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "id": "example-tool",
+  "name": "Example Tool",
+  "description": "A template for creating new MACHETE tools",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "category": "utility",
+  "docker": {
+    "build": ".",
+    "ports": ["8080:8080"],
+    "environment": {
+      "NODE_ENV": "production",
+      "PORT": "8080"
+    },
+    "volumes": [
+      "./data:/app/data"
+    ]
+  },
+  "routes": {
+    "base": "/tools/example-tool",
+    "api": "/tools/example-tool/api"
+  },
+  "dependencies": [],
+  "configuration": {
+    "required": [],
+    "optional": [
+      {
+        "key": "API_KEY",
+        "description": "API key for external service",
+        "type": "string",
+        "secret": true
+      }
+    ]
+  }
+}

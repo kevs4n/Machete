@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # Caddy reverse proxy
+  caddy:
+    image: caddy:2-alpine
+    container_name: machete-caddy
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./core/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./core/caddy/data:/data
+      - ./core/caddy/config:/config
+    networks:
+      - machete-network
+    depends_on:
+      - frontend
+      - api
+
+  # Core frontend
+  frontend:
+    build:
+      context: ./core/frontend
+      dockerfile: Dockerfile
+    container_name: machete-frontend
+    restart: unless-stopped
+    environment:
+      - API_URL=http://api:3001
+    networks:
+      - machete-network
+    depends_on:
+      - api
+
+  # Core API
+  api:
+    build:
+      context: ./core/api
+      dockerfile: Dockerfile
+    container_name: machete-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./tools:/app/tools
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DOCKER_SOCKET=/var/run/docker.sock
+    networks:
+      - machete-network
+
+  # Database for tool registry
+  database:
+    image: postgres:15-alpine
+    container_name: machete-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: machete
+      POSTGRES_USER: machete
+      POSTGRES_PASSWORD: machete_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - machete-network
+
+networks:
+  machete-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
