@@ -1,24 +1,33 @@
-FROM node:18-alpine
+FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
 
-# Install Docker CLI (for managing containers)
-RUN apk add --no-cache docker-cli
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package*.json ./
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Install dependencies
-RUN npm install --production
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Copy application code
 COPY . .
 
-# Create required directories
-RUN mkdir -p /app/tools /app/data
+# Create directories
+RUN mkdir -p /app/tools /app/data /app/logs
 
 # Expose port
-EXPOSE 3001
+EXPOSE 8000
 
-# Start the application
-CMD ["npm", "start"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# Run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

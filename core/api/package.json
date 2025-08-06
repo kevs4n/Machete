@@ -22,7 +22,10 @@
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.0",
     "dotenv": "^16.0.3",
-    "http-proxy-middleware": "^2.0.6"
+    "http-proxy-middleware": "^2.0.6",
+    "winston": "^3.8.2",
+    "express-rate-limit": "^6.7.0",
+    "compression": "^1.7.4"
   },
   "devDependencies": {
     "nodemon": "^2.0.20",
