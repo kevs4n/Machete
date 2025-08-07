@@ -226,6 +226,17 @@ class GitService:
                     metadata["has_dockerfile"] = True
                     break
             
+            # Check for Docker Compose files
+            compose_files = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"]
+            for compose_file in compose_files:
+                if (repo_dir / compose_file).exists():
+                    metadata["has_compose"] = True
+                    metadata["compose_file"] = compose_file
+                    break
+            else:
+                metadata["has_compose"] = False
+                metadata["compose_file"] = None
+            
             # Check for package.json (Node.js)
             package_json = repo_dir / "package.json"
             if package_json.exists():
@@ -260,6 +271,51 @@ class GitService:
                                 break
                     except Exception:
                         continue
+            
+            # Check for machete.yml configuration
+            machete_yml = repo_dir / "machete.yml"
+            if machete_yml.exists():
+                try:
+                    import yaml
+                    with open(machete_yml) as f:
+                        machete_config = yaml.safe_load(f)
+                    
+                    # Extract basic metadata
+                    if not metadata["name"]:
+                        metadata["name"] = machete_config.get("name")
+                    if not metadata["description"]:
+                        metadata["description"] = machete_config.get("description")
+                    if not metadata["version"]:
+                        metadata["version"] = machete_config.get("version")
+                    if not metadata["author"]:
+                        metadata["author"] = machete_config.get("author")
+                    if not metadata["license"]:
+                        metadata["license"] = machete_config.get("license")
+                    
+                    # Extract MACHETE-specific configuration
+                    machete_settings = machete_config.get("machete", {})
+                    if not metadata["port"]:
+                        metadata["port"] = machete_settings.get("port")
+                    if machete_settings.get("health_check"):
+                        metadata["health_check"] = machete_settings["health_check"]
+                    
+                    # Extract volumes configuration
+                    volumes = machete_settings.get("volumes", [])
+                    if volumes:
+                        metadata["volumes"] = volumes
+                    
+                    # Extract environment variables
+                    environment = machete_settings.get("environment", [])
+                    if environment:
+                        metadata["environment"] = environment
+                    
+                    # Extract dependencies
+                    dependencies = machete_settings.get("dependencies", [])
+                    if dependencies:
+                        metadata["dependencies"] = dependencies
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to parse machete.yml: {e}")
             
             # Check for README files
             readme_files = ["README.md", "README.txt", "README.rst", "readme.md"]

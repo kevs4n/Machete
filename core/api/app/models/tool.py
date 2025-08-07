@@ -49,6 +49,10 @@ class Tool(BaseModel):
     port = Column(Integer)
     health_check_endpoint = Column(String(255), default="/health")
     
+    # Docker Compose support
+    has_compose = Column(Boolean, default=False)
+    compose_file = Column(String(255), default="docker-compose.yml")
+    
     # Build configuration
     dockerfile_path = Column(String(500), default="Dockerfile")
     build_context = Column(String(500), default=".")

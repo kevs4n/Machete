@@ -77,6 +77,12 @@ class DockerService:
     
     async def start_container(self, tool: Tool) -> Dict[str, Any]:
         """Start a container for a tool"""
+        if not self.is_available or not self.client:
+            return {
+                "success": False,
+                "error": "Docker service is not available"
+            }
+            
         try:
             image_name = f"machete-{tool.name}"
             container_name = f"machete-tool-{tool.name}"
@@ -87,11 +93,12 @@ class DockerService:
                 import json
                 env_vars = json.loads(tool.environment_variables)
             
-            # Parse volumes
+            # Parse volumes and ensure host directories exist
             volumes = {}
             if tool.volumes:
                 import json
-                volumes = json.loads(tool.volumes)
+                volume_config = json.loads(tool.volumes)
+                volumes = self._prepare_volumes(tool.name, volume_config)
             
             # Start the container
             container = self.client.containers.run(
@@ -217,3 +224,44 @@ class DockerService:
             logger.info(f"Created Docker network: {self.network_name}")
         except Exception as e:
             logger.error(f"Error ensuring network exists: {e}")
+
+    def _prepare_volumes(self, tool_name: str, volume_config: Dict[str, str]) -> Dict[str, Dict[str, str]]:
+        """Prepare volumes for container, ensuring host directories exist"""
+        from pathlib import Path
+        import os
+        
+        prepared_volumes = {}
+        
+        # Base directory for tool data
+        tool_data_dir = Path(settings.TOOLS_DATA_PATH) / tool_name
+        
+        for host_path, container_path in volume_config.items():
+            # Handle relative paths - make them relative to tool data directory
+            if not host_path.startswith('/') and not host_path.startswith('C:'):
+                # Relative path - create under tool data directory
+                full_host_path = tool_data_dir / host_path.lstrip('./')
+            else:
+                # Absolute path - use as-is (but be careful!)
+                full_host_path = Path(host_path)
+            
+            # Ensure the host directory exists
+            try:
+                full_host_path.parent.mkdir(parents=True, exist_ok=True)
+                if not full_host_path.exists():
+                    if container_path.endswith('/'):
+                        # Directory mount
+                        full_host_path.mkdir(parents=True, exist_ok=True)
+                    else:
+                        # File mount - create parent directory
+                        full_host_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Convert to string for Docker API
+                prepared_volumes[str(full_host_path)] = {'bind': container_path, 'mode': 'rw'}
+                
+                logger.info(f"Prepared volume mount: {full_host_path} -> {container_path}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to prepare volume {host_path}: {e}")
+                continue
+        
+        return prepared_volumes

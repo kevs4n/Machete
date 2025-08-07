@@ -40,6 +40,7 @@ class Settings:
         self.TOOLS_DIR = os.getenv("TOOLS_DIR", "/app/tools")
         self.DATA_DIR = os.getenv("DATA_DIR", "/app/data")
         self.LOGS_DIR = os.getenv("LOGS_DIR", "/app/logs")
+        self.TOOLS_DATA_PATH = os.getenv("TOOLS_DATA_PATH", "/app/data/tools")
         
         # Security
         self.SECRET_KEY = self._get_secret_key()

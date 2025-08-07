@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.tool import Tool, ToolStatus, ToolType
 from app.services.docker_service import DockerService
+from app.services.docker_service_enhanced import DockerServiceEnhanced
 from app.services.git_service import GitService
 from app.core.config import settings
 import logging
@@ -22,6 +23,7 @@ class ToolService:
     
     def __init__(self):
         self.docker_service = DockerService()
+        self.docker_service_enhanced = DockerServiceEnhanced()
         self.git_service = GitService()
     
     async def create_tool(self, db: AsyncSession, tool_data: Dict[str, Any]) -> Tool:
@@ -126,6 +128,32 @@ class ToolService:
                     "license": metadata.get("license")
                 }
                 
+                # Add Docker Compose support
+                if metadata.get("has_compose"):
+                    tool_data["has_compose"] = True
+                    tool_data["compose_file"] = metadata.get("compose_file", "docker-compose.yml")
+                
+                # Add volumes configuration
+                if metadata.get("volumes"):
+                    import json
+                    # Convert list format to dict format for Docker API
+                    volumes_dict = {}
+                    for volume in metadata["volumes"]:
+                        if ":" in volume:
+                            host_path, container_path = volume.split(":", 1)
+                            volumes_dict[host_path] = container_path
+                    tool_data["volumes"] = json.dumps(volumes_dict)
+                
+                # Add environment variables
+                if metadata.get("environment"):
+                    import json
+                    env_dict = {}
+                    for env_var in metadata["environment"]:
+                        if "=" in env_var:
+                            key, value = env_var.split("=", 1)
+                            env_dict[key] = value
+                    tool_data["environment_variables"] = json.dumps(env_dict)
+                
                 tool = await self.create_tool(db, tool_data)
                 
                 # Build the tool
@@ -209,7 +237,7 @@ class ToolService:
             return {"success": False, "error": str(e)}
     
     async def start_tool(self, db: AsyncSession, tool_id: int) -> Dict[str, Any]:
-        """Start a tool container"""
+        """Start a tool container or compose stack"""
         tool = await self.get_tool(db, tool_id)
         if not tool:
             return {"success": False, "error": "Tool not found"}
@@ -218,23 +246,58 @@ class ToolService:
             return {"success": True, "message": "Tool is already running"}
         
         try:
-            # Start container
-            start_result = await self.docker_service.start_container(tool)
+            # Check if tool uses Docker Compose
+            if getattr(tool, 'has_compose', False) and tool.compose_file:
+                logger.info(f"Starting Docker Compose stack for tool {tool.name}")
+                
+                # Prepare tool directory path
+                tool_path = f"{settings.TOOLS_DATA_PATH}/{tool.name}"
+                
+                # Start compose stack using enhanced service
+                start_result = await self.docker_service_enhanced.start_compose_stack(
+                    tool_path, 
+                    tool.compose_file,
+                    tool_name=tool.name
+                )
+                
+                if start_result["success"]:
+                    await self.update_tool(db, tool_id, {
+                        "status": ToolStatus.RUNNING,
+                        "container_id": start_result.get("stack_id", f"compose-{tool.name}"),
+                        "container_name": f"compose-stack-{tool.name}",
+                        "error_message": None
+                    })
+                    return {
+                        "success": True, 
+                        "message": f"Docker Compose stack started successfully",
+                        "services": start_result.get("services", [])
+                    }
+                else:
+                    await self.update_tool(db, tool_id, {
+                        "status": ToolStatus.FAILED,
+                        "error_message": start_result.get("error", "Failed to start compose stack")
+                    })
+                    return {"success": False, "error": start_result.get("error", "Failed to start compose stack")}
             
-            if start_result["success"]:
-                await self.update_tool(db, tool_id, {
-                    "status": ToolStatus.RUNNING,
-                    "container_id": start_result["container_id"],
-                    "container_name": start_result["container_name"],
-                    "error_message": None
-                })
-                return {"success": True, "message": "Tool started successfully"}
             else:
-                await self.update_tool(db, tool_id, {
-                    "status": ToolStatus.FAILED,
-                    "error_message": start_result.get("error", "Failed to start container")
-                })
-                return {"success": False, "error": start_result.get("error", "Failed to start container")}
+                # Use regular Docker service for single containers
+                logger.info(f"Starting single container for tool {tool.name}")
+                start_result = await self.docker_service.start_container(tool)
+                
+                if start_result["success"]:
+                    await self.update_tool(db, tool_id, {
+                        "status": ToolStatus.RUNNING,
+                        "container_id": start_result["container_id"],
+                        "container_name": start_result["container_name"],
+                        "error_message": None
+                    })
+                    return {"success": True, "message": "Tool started successfully"}
+                else:
+                    await self.update_tool(db, tool_id, {
+                        "status": ToolStatus.FAILED,
+                        "error_message": start_result.get("error", "Failed to start container")
+                    })
+                    return {"success": False, "error": start_result.get("error", "Failed to start container")}
                 
         except Exception as e:
             logger.error(f"Error starting tool {tool_id}: {e}")
@@ -245,7 +308,7 @@ class ToolService:
             return {"success": False, "error": str(e)}
     
     async def stop_tool(self, db: AsyncSession, tool_id: int) -> Dict[str, Any]:
-        """Stop a tool container"""
+        """Stop a tool container or compose stack"""
         tool = await self.get_tool(db, tool_id)
         if not tool:
             return {"success": False, "error": "Tool not found"}
@@ -254,17 +317,41 @@ class ToolService:
             return {"success": True, "message": "Tool is not running"}
         
         try:
-            # Stop container
-            stop_result = await self.docker_service.stop_container(tool.container_id)
+            # Check if tool uses Docker Compose
+            if getattr(tool, 'has_compose', False) and tool.compose_file:
+                logger.info(f"Stopping Docker Compose stack for tool {tool.name}")
+                
+                # Prepare tool directory path
+                tool_path = f"{settings.TOOLS_DATA_PATH}/{tool.name}"
+                
+                # Stop compose stack using enhanced service
+                stop_result = await self.docker_service_enhanced.stop_compose_stack(
+                    tool_path, 
+                    tool.compose_file
+                )
+                
+                if stop_result["success"]:
+                    await self.update_tool(db, tool_id, {
+                        "status": ToolStatus.STOPPED,
+                        "error_message": None
+                    })
+                    return {"success": True, "message": "Docker Compose stack stopped successfully"}
+                else:
+                    return {"success": False, "error": stop_result.get("error", "Failed to stop compose stack")}
             
-            if stop_result:
-                await self.update_tool(db, tool_id, {
-                    "status": ToolStatus.STOPPED,
-                    "error_message": None
-                })
-                return {"success": True, "message": "Tool stopped successfully"}
             else:
-                return {"success": False, "error": "Failed to stop container"}
+                # Use regular Docker service for single containers
+                logger.info(f"Stopping single container for tool {tool.name}")
+                stop_result = await self.docker_service.stop_container(tool.container_id)
+                
+                if stop_result:
+                    await self.update_tool(db, tool_id, {
+                        "status": ToolStatus.STOPPED,
+                        "error_message": None
+                    })
+                    return {"success": True, "message": "Tool stopped successfully"}
+                else:
+                    return {"success": False, "error": "Failed to stop container"}
                 
         except Exception as e:
             logger.error(f"Error stopping tool {tool_id}: {e}")

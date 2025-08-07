@@ -4,8 +4,9 @@ Tool management API endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
+from datetime import datetime
 
 from app.core.database import get_db_session
 from app.services.tool_service import ToolService
@@ -17,31 +18,31 @@ tool_service = ToolService()
 # Pydantic models for request/response
 class ToolCreate(BaseModel):
     git_url: str
-    name: str = None
+    name: Optional[str] = None
     branch: str = "main"
 
 class ToolResponse(BaseModel):
     id: int
     name: str
     display_name: str
-    description: str = None
+    description: Optional[str] = None
     git_url: str
     git_branch: str
     status: ToolStatus
     tool_type: ToolType
-    port: int = None
-    version: str = None
-    author: str = None
+    port: Optional[int] = None
+    version: Optional[str] = None
+    author: Optional[str] = None
     enabled: bool
-    created_at: str
-    updated_at: str = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
 
 class ToolStatusUpdate(BaseModel):
-    enabled: bool = None
-    auto_start: bool = None
+    enabled: Optional[bool] = None
+    auto_start: Optional[bool] = None
 
 @router.get("/", response_model=List[ToolResponse])
 async def get_tools(
@@ -76,7 +77,7 @@ async def install_tool(
     result = await tool_service.install_tool(
         db, 
         tool_data.git_url, 
-        tool_data.name, 
+        tool_data.name or "", 
         tool_data.branch
     )
     
