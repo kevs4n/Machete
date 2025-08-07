@@ -1,0 +1,46 @@
+{
+    # Global options
+    auto_https off
+}
+
+# Main domain for development
+localhost:80 {
+    # Serve the frontend for the root path
+    handle / {
+        reverse_proxy frontend-dev:3000
+    }
+
+    # API endpoints - route to development API
+    handle /api/* {
+        reverse_proxy api-dev:3001
+    }
+
+    # Tool proxy - let the API handle dynamic routing
+    handle /tools/* {
+        reverse_proxy api-dev:3001
+    }
+
+    # Static tool routes (legacy/specific tools)
+    handle /tools/azure-devops/* {
+        reverse_proxy azure-devops:8080
+    }
+
+    handle /tools/fasttrack/* {
+        reverse_proxy fasttrack:8080
+    }
+
+    # Health check
+    handle /health {
+        reverse_proxy api-dev:3001
+    }
+
+    # Fallback to frontend for SPA routing
+    handle {
+        reverse_proxy frontend-dev:3000
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log
+    }
+}

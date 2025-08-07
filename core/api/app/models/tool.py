@@ -24,6 +24,7 @@ class ToolType(str, Enum):
     CLI = "cli"
     DAEMON = "daemon"
     UTILITY = "utility"
+    COMPOSE = "compose"
 
 class Tool(BaseModel):
     """Tool database model"""

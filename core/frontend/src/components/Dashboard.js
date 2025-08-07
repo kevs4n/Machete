@@ -11,6 +11,8 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
@@ -18,39 +20,66 @@ import {
   CloudDownload as CloudDownloadIcon,
   AccountTree as AccountTreeIcon,
   Speed as SpeedIcon,
+  Error as ErrorIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { toolsAPI, apiUtils } from '../services/api';
 
 const Dashboard = () => {
   const [tools, setTools] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const navigate = useNavigate();
 
-  // Mock tools for now - will be replaced with API call
-  const mockTools = [
-    {
-      id: 'azure-devops',
-      name: 'Azure DevOps Process Creation',
-      description: 'Create and manage Azure DevOps process templates',
-      icon: <AccountTreeIcon fontSize="large" />,
-      status: 'available',
-      url: '/tools/azure-devops'
-    },
-    {
-      id: 'fasttrack',
-      name: 'Fasttrack Process Model Import',
-      description: 'Import and manage Fasttrack process models',
-      icon: <SpeedIcon fontSize="large" />,
-      status: 'available',
-      url: '/tools/fasttrack'
-    }
-  ];
-
+  // Load tools from API
   useEffect(() => {
-    // TODO: Replace with actual API call
-    setTools(mockTools);
+    loadTools();
   }, []);
+
+  const loadTools = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await toolsAPI.getAll();
+      const apiTools = response.data;
+      
+      // Transform API data to match UI expectations
+      const transformedTools = apiTools.map(tool => ({
+        id: tool.id,
+        name: tool.display_name || tool.name,
+        description: tool.description,
+        icon: getToolIcon(tool.tool_type),
+        status: tool.status === 'running' ? 'available' : 'unavailable',
+        url: tool.port ? `http://localhost:${tool.port}` : '#',
+        toolType: tool.tool_type,
+        enabled: tool.enabled,
+        version: tool.version,
+        author: tool.author
+      }));
+      
+      setTools(transformedTools);
+    } catch (err) {
+      console.error('Error loading tools:', err);
+      setError(apiUtils.handleError(err, 'Failed to load tools'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getToolIcon = (toolType) => {
+    switch (toolType) {
+      case 'web':
+        return <AccountTreeIcon fontSize="large" />;
+      case 'api':
+        return <SpeedIcon fontSize="large" />;
+      case 'service':
+        return <BuildIcon fontSize="large" />;
+      default:
+        return <BuildIcon fontSize="large" />;
+    }
+  };
 
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -104,69 +133,134 @@ const Dashboard = () => {
           Available Tools
         </Typography>
         
-        <Grid container spacing={3} sx={{ mt: 2 }}>
-          {tools.map((tool) => (
-            <Grid item xs={12} sm={6} md={4} key={tool.id}>
+        {/* Loading State */}
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <CircularProgress />
+          </Box>
+        )}
+        
+        {/* Error State */}
+        {error && (
+          <Alert severity="error" sx={{ mt: 2, mb: 2 }} action={
+            <IconButton color="inherit" size="small" onClick={loadTools}>
+              <ErrorIcon />
+            </IconButton>
+          }>
+            {error}
+          </Alert>
+        )}
+        
+        {/* Tools Grid */}
+        {!loading && !error && (
+          <Grid container spacing={3} sx={{ mt: 2 }}>
+            {tools.map((tool) => (
+              <Grid item xs={12} sm={6} md={4} key={tool.id}>
+                <Card 
+                  className="tool-card"
+                  onClick={() => handleToolClick(tool)}
+                  sx={{ 
+                    height: '100%',
+                    opacity: tool.status === 'available' ? 1 : 0.5,
+                    cursor: tool.status === 'available' ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                    <Box sx={{ color: 'primary.main', mb: 2 }}>
+                      {tool.icon}
+                    </Box>
+                    <Typography variant="h6" gutterBottom>
+                      {tool.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {tool.description}
+                    </Typography>
+                    <Typography 
+                      variant="caption" 
+                      sx={{ 
+                        mt: 2, 
+                        display: 'block',
+                        color: tool.status === 'available' ? 'success.main' : 'warning.main'
+                      }}
+                    >
+                      {tool.status.toUpperCase()}
+                    </Typography>
+                    {tool.version && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        v{tool.version}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+            
+            {/* Add New Tool Card */}
+            <Grid item xs={12} sm={6} md={4}>
               <Card 
                 className="tool-card"
-                onClick={() => handleToolClick(tool)}
+                onClick={() => navigate('/tools')}
                 sx={{ 
                   height: '100%',
-                  opacity: tool.status === 'available' ? 1 : 0.5,
-                  cursor: tool.status === 'available' ? 'pointer' : 'not-allowed'
+                  border: '2px dashed',
+                  borderColor: 'primary.main',
+                  backgroundColor: 'transparent'
                 }}
               >
                 <CardContent sx={{ textAlign: 'center', p: 3 }}>
                   <Box sx={{ color: 'primary.main', mb: 2 }}>
-                    {tool.icon}
+                    <CloudDownloadIcon fontSize="large" />
                   </Box>
                   <Typography variant="h6" gutterBottom>
-                    {tool.name}
+                    Install New Tool
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {tool.description}
-                  </Typography>
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      mt: 2, 
-                      display: 'block',
-                      color: tool.status === 'available' ? 'success.main' : 'warning.main'
-                    }}
-                  >
-                    {tool.status.toUpperCase()}
+                    Add new tools from Git repositories
                   </Typography>
                 </CardContent>
               </Card>
             </Grid>
-          ))}
-          
-          {/* Add New Tool Card */}
-          <Grid item xs={12} sm={6} md={4}>
-            <Card 
-              className="tool-card"
-              onClick={() => navigate('/tools')}
-              sx={{ 
-                height: '100%',
-                border: '2px dashed',
-                borderColor: 'primary.main',
-                backgroundColor: 'transparent'
-              }}
-            >
-              <CardContent sx={{ textAlign: 'center', p: 3 }}>
-                <Box sx={{ color: 'primary.main', mb: 2 }}>
-                  <CloudDownloadIcon fontSize="large" />
-                </Box>
-                <Typography variant="h6" gutterBottom>
-                  Install New Tool
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Add new tools from Git repositories
-                </Typography>
-              </CardContent>
-            </Card>
           </Grid>
-        </Grid>
+        )}
+        
+        {/* Empty State */}
+        {!loading && !error && tools.length === 0 && (
+          <Box sx={{ textAlign: 'center', mt: 4 }}>
+            <CloudDownloadIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              No Tools Installed
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Get started by installing your first tool from a Git repository
+            </Typography>
+            <Box>
+              <Card 
+                className="tool-card"
+                onClick={() => navigate('/tools')}
+                sx={{ 
+                  maxWidth: 300,
+                  margin: '0 auto',
+                  border: '2px dashed',
+                  borderColor: 'primary.main',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer'
+                }}
+              >
+                <CardContent sx={{ textAlign: 'center', p: 3 }}>
+                  <Box sx={{ color: 'primary.main', mb: 2 }}>
+                    <CloudDownloadIcon fontSize="large" />
+                  </Box>
+                  <Typography variant="h6" gutterBottom>
+                    Install New Tool
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Add tools from Git repositories
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Box>
+          </Box>
+        )}
       </Container>
     </>
   );

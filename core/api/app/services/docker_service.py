@@ -1,9 +1,13 @@
 """
-Docker service for container management
+Enhanced Docker service for container and compose management
 """
 
 import asyncio
 import docker
+import subprocess
+import json
+import os
+from pathlib import Path
 from typing import Dict, List, Optional, Any
 from app.core.config import settings
 from app.models.tool import Tool, ToolStatus
@@ -12,7 +16,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class DockerService:
-    """Service for managing Docker containers"""
+    """Enhanced service for managing Docker containers and compose stacks"""
     
     def __init__(self):
         try:
@@ -25,7 +29,7 @@ class DockerService:
             self.client = None
             self.network_name = None
             self.is_available = False
-    
+
     async def build_image(self, tool: Tool, build_context: str) -> Dict[str, Any]:
         """Build Docker image for a tool"""
         if not self.is_available:
@@ -44,10 +48,10 @@ class DockerService:
                 dockerfile=tool.dockerfile_path,
                 tag=image_name,
                 rm=True,
-                timeout=settings.TOOL_BUILD_TIMEOUT
+                forcerm=True
             )
             
-            # Collect build logs
+            # Parse build logs
             logs = []
             for log in build_logs:
                 if 'stream' in log:
@@ -57,7 +61,7 @@ class DockerService:
                 "success": True,
                 "image_id": image.id,
                 "image_name": image_name,
-                "logs": "\n".join(logs)
+                "logs": logs
             }
             
         except docker.errors.BuildError as e:
@@ -65,19 +69,19 @@ class DockerService:
             return {
                 "success": False,
                 "error": str(e),
-                "logs": "\n".join([log.get('stream', '') for log in e.build_log if 'stream' in log])
+                "logs": [log.get('stream', '') for log in e.build_log if 'stream' in log]
             }
         except Exception as e:
             logger.error(f"Unexpected error building tool {tool.name}: {e}")
             return {
                 "success": False,
                 "error": str(e),
-                "logs": ""
+                "logs": []
             }
-    
+
     async def start_container(self, tool: Tool) -> Dict[str, Any]:
         """Start a container for a tool"""
-        if not self.is_available or not self.client:
+        if not self.is_available:
             return {
                 "success": False,
                 "error": "Docker service is not available"
@@ -90,13 +94,11 @@ class DockerService:
             # Parse environment variables
             env_vars = {}
             if tool.environment_variables:
-                import json
                 env_vars = json.loads(tool.environment_variables)
             
-            # Parse volumes and ensure host directories exist
+            # Parse and prepare volumes
             volumes = {}
             if tool.volumes:
-                import json
                 volume_config = json.loads(tool.volumes)
                 volumes = self._prepare_volumes(tool.name, volume_config)
             
@@ -126,110 +128,115 @@ class DockerService:
                 "error": str(e)
             }
         except Exception as e:
-            logger.error(f"Unexpected error starting container for tool {tool.name}: {e}")
+            logger.error(f"Unexpected error starting tool {tool.name}: {e}")
             return {
                 "success": False,
                 "error": str(e)
             }
-    
-    async def stop_container(self, container_id: str) -> bool:
-        """Stop a container"""
-        try:
-            container = self.client.containers.get(container_id)
-            container.stop(timeout=10)
-            return True
-        except docker.errors.NotFound:
-            logger.warning(f"Container {container_id} not found")
-            return True  # Already stopped
-        except Exception as e:
-            logger.error(f"Error stopping container {container_id}: {e}")
-            return False
-    
-    async def remove_container(self, container_id: str) -> bool:
-        """Remove a container"""
-        try:
-            container = self.client.containers.get(container_id)
-            container.remove(force=True)
-            return True
-        except docker.errors.NotFound:
-            logger.warning(f"Container {container_id} not found")
-            return True  # Already removed
-        except Exception as e:
-            logger.error(f"Error removing container {container_id}: {e}")
-            return False
-    
-    async def get_container_status(self, container_id: str) -> ToolStatus:
-        """Get container status"""
-        try:
-            container = self.client.containers.get(container_id)
-            status = container.status
-            
-            if status == "running":
-                return ToolStatus.RUNNING
-            elif status == "exited":
-                return ToolStatus.STOPPED
-            elif status in ["created", "restarting"]:
-                return ToolStatus.PENDING
-            else:
-                return ToolStatus.UNKNOWN
-                
-        except docker.errors.NotFound:
-            return ToolStatus.STOPPED
-        except Exception as e:
-            logger.error(f"Error getting container status {container_id}: {e}")
-            return ToolStatus.UNKNOWN
-    
-    async def health_check(self, tool: Tool) -> bool:
-        """Perform health check on a tool"""
-        if not tool.container_id or not tool.port:
-            return False
-        
-        try:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                url = f"http://localhost:{tool.port}{tool.health_check_endpoint}"
-                response = await client.get(url, timeout=5.0)
-                return response.status_code == 200
-        except Exception as e:
-            logger.debug(f"Health check failed for tool {tool.name}: {e}")
-            return False
-    
-    async def get_container_logs(self, container_id: str, tail: int = 100) -> str:
-        """Get container logs"""
-        try:
-            container = self.client.containers.get(container_id)
-            logs = container.logs(tail=tail, timestamps=True)
-            return logs.decode('utf-8') if isinstance(logs, bytes) else str(logs)
-        except Exception as e:
-            logger.error(f"Error getting logs for container {container_id}: {e}")
-            return f"Error retrieving logs: {e}"
-    
-    def cleanup_unused_images(self):
-        """Clean up unused Docker images"""
-        try:
-            self.client.images.prune()
-            logger.info("Cleaned up unused Docker images")
-        except Exception as e:
-            logger.error(f"Error cleaning up images: {e}")
-    
-    def ensure_network_exists(self):
-        """Ensure the MACHETE network exists"""
-        try:
-            self.client.networks.get(self.network_name)
-        except docker.errors.NotFound:
-            self.client.networks.create(
-                self.network_name,
-                driver="bridge"
-            )
-            logger.info(f"Created Docker network: {self.network_name}")
-        except Exception as e:
-            logger.error(f"Error ensuring network exists: {e}")
 
-    def _prepare_volumes(self, tool_name: str, volume_config: Dict[str, str]) -> Dict[str, Dict[str, str]]:
+    async def start_compose_stack(self, tool: Tool, compose_path: str) -> Dict[str, Any]:
+        """Start a Docker Compose stack for a tool"""
+        try:
+            # Prepare environment for compose
+            env = os.environ.copy()
+            
+            # Add tool-specific environment variables
+            if tool.environment_variables:
+                env_vars = json.loads(tool.environment_variables)
+                env.update(env_vars)
+            
+            # Add MACHETE-specific variables
+            env.update({
+                'MACHETE_TOOL_NAME': tool.name,
+                'MACHETE_TOOL_PORT': str(tool.port) if tool.port else '8080',
+                'MACHETE_NETWORK': self.network_name,
+                'MACHETE_DATA_DIR': f'/app/data/tools/{tool.name}'
+            })
+            
+            # Change to the tool's directory
+            compose_dir = Path(compose_path).parent
+            
+            # Run docker-compose up
+            result = subprocess.run([
+                'docker-compose', 
+                '-f', compose_path,
+                '-p', f'machete-{tool.name}',  # Project name
+                'up', '-d'
+            ], 
+            cwd=compose_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                # Get container information
+                containers = self._get_compose_containers(tool.name)
+                
+                return {
+                    "success": True,
+                    "message": "Compose stack started successfully",
+                    "containers": containers,
+                    "logs": result.stdout
+                }
+            else:
+                logger.error(f"Compose failed for tool {tool.name}: {result.stderr}")
+                return {
+                    "success": False,
+                    "error": result.stderr,
+                    "logs": result.stdout
+                }
+                
+        except subprocess.TimeoutExpired:
+            return {
+                "success": False,
+                "error": "Compose startup timed out (5 minutes)"
+            }
+        except FileNotFoundError:
+            return {
+                "success": False,
+                "error": "docker-compose command not found"
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error starting compose for tool {tool.name}: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def stop_compose_stack(self, tool: Tool, compose_path: str) -> Dict[str, Any]:
+        """Stop a Docker Compose stack for a tool"""
+        try:
+            compose_dir = Path(compose_path).parent
+            
+            result = subprocess.run([
+                'docker-compose',
+                '-f', compose_path,
+                '-p', f'machete-{tool.name}',
+                'down'
+            ],
+            cwd=compose_dir,
+            capture_output=True,
+            text=True,
+            timeout=60
+            )
+            
+            return {
+                "success": result.returncode == 0,
+                "message": "Compose stack stopped" if result.returncode == 0 else "Failed to stop compose stack",
+                "logs": result.stdout if result.returncode == 0 else result.stderr
+            }
+            
+        except Exception as e:
+            logger.error(f"Error stopping compose for tool {tool.name}: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def _prepare_volumes(self, tool_name: str, volume_config: dict) -> dict:
         """Prepare volumes for container, ensuring host directories exist"""
-        from pathlib import Path
-        import os
-        
         prepared_volumes = {}
         
         # Base directory for tool data
@@ -252,11 +259,14 @@ class DockerService:
                         # Directory mount
                         full_host_path.mkdir(parents=True, exist_ok=True)
                     else:
-                        # File mount - create parent directory
+                        # File mount - create parent directory only
                         full_host_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                # Convert to string for Docker API
-                prepared_volumes[str(full_host_path)] = {'bind': container_path, 'mode': 'rw'}
+                # Convert to Docker API format
+                prepared_volumes[str(full_host_path)] = {
+                    'bind': container_path, 
+                    'mode': 'rw'
+                }
                 
                 logger.info(f"Prepared volume mount: {full_host_path} -> {container_path}")
                 
@@ -265,3 +275,54 @@ class DockerService:
                 continue
         
         return prepared_volumes
+
+    def _get_compose_containers(self, tool_name: str) -> List[Dict[str, Any]]:
+        """Get information about containers in a compose stack"""
+        try:
+            if not self.is_available:
+                return []
+                
+            # Find containers with the project label
+            containers = self.client.containers.list(
+                filters={'label': f'com.docker.compose.project=machete-{tool_name}'}
+            )
+            
+            container_info = []
+            for container in containers:
+                info = {
+                    'id': container.id,
+                    'name': container.name,
+                    'status': container.status,
+                    'ports': container.ports,
+                    'labels': container.labels
+                }
+                container_info.append(info)
+            
+            return container_info
+            
+        except Exception as e:
+            logger.error(f"Error getting compose containers for {tool_name}: {e}")
+            return []
+
+    async def get_container_logs(self, container_name: str, lines: int = 100) -> Dict[str, Any]:
+        """Get logs from a container"""
+        try:
+            if not self.is_available:
+                return {"success": False, "error": "Docker service unavailable"}
+                
+            container = self.client.containers.get(container_name)
+            logs = container.logs(tail=lines, timestamps=True).decode('utf-8')
+            
+            return {
+                "success": True,
+                "logs": logs,
+                "container_status": container.status
+            }
+            
+        except docker.errors.NotFound:
+            return {"success": False, "error": "Container not found"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+# Backward compatibility alias
+DockerServiceEnhanced = DockerService

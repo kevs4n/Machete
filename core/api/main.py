@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.api.health import router as health_router
 from app.api.tools import router as tools_router
+from app.api.system_simple import router as system_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -85,9 +86,10 @@ async def log_requests(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
-# Include routers
+# Include routers with proper ordering
 app.include_router(health_router, prefix="/api")
-app.include_router(tools_router, prefix="/api")
+app.include_router(system_router, prefix="/api/system")
+app.include_router(tools_router, prefix="/api/tools")
 
 # Root endpoint
 @app.get("/", include_in_schema=False)

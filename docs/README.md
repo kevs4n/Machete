@@ -59,7 +59,7 @@ MACHETE uses a microservices architecture with the following components:
 
 - **Caddy Proxy**: Reverse proxy and load balancer
 - **Frontend**: React-based web interface
-- **API**: Node.js backend for tool management
+- **API**: Python FastAPI backend for tool management
 - **Database**: PostgreSQL for storing tool configurations
 
 ### Tool Architecture
@@ -97,7 +97,7 @@ Each tool should follow this structure:
 tool-name/
 ├── tool.json          # Tool metadata and configuration
 ├── Dockerfile         # Container definition
-├── package.json       # Dependencies (for Node.js tools)
+├── package.json       # Dependencies (for tools that use Node.js)
 ├── install.sh         # Installation script
 ├── README.md          # Documentation
 └── src/              # Source code

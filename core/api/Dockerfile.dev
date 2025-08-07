@@ -1,18 +1,20 @@
-FROM node:18-alpine
+FROM python:3.11-alpine
 
 WORKDIR /app
 
-# Install Docker CLI (for managing containers)
-RUN apk add --no-cache docker-cli
+# Install system dependencies
+RUN apk add --no-cache \
+    docker-cli \
+    gcc \
+    musl-dev \
+    postgresql-dev \
+    curl
 
-# Install nodemon for development
-RUN npm install -g nodemon
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
-RUN npm install
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
@@ -23,5 +25,5 @@ RUN mkdir -p /app/tools /app/data
 # Expose port
 EXPOSE 3001
 
-# Start the development server
-CMD ["npm", "run", "dev"]
+# Development server with hot reload
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3001", "--reload"]

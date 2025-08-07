@@ -1,6 +1,14 @@
 # MACHETE
 **Multi-purpose Automation & Configuration Hub for Engineering Tools and Execution**
 
+## 🚀 Current Status: Development Environment Ready
+**Last Updated**: August 7, 2025
+
+✅ **Full Development Stack Operational**  
+✅ **Database Connectivity Confirmed**  
+✅ **Frontend-Backend Integration Complete**  
+✅ **Real-time Development Workflow Active**  
+
 ## Overview
 MACHETE is a containerized platform that serves as a Swiss Army knife for engineering tools. It provides a unified interface to manage and access various automation tools through a web-based frontend.
 
@@ -30,6 +38,23 @@ MACHETE is a containerized platform that serves as a Swiss Army knife for engine
 2. **Fasttrack Process Model Import**: Tool for importing and managing Fasttrack process models
 
 ## Quick Start
+
+### 🔧 Development Environment (ACTIVE)
+```bash
+# Start development environment with hot reload
+docker-compose -f docker-compose.dev.yml up -d
+
+# Access development interface
+# Frontend Dev: http://localhost:3000 (React with hot reload)
+# API Dev: http://localhost:3001 (FastAPI with live updates)
+# API Documentation: http://localhost:8080/api/docs
+# Development Proxy: http://localhost:8080
+
+# Check container status
+docker-compose -f docker-compose.dev.yml ps
+```
+
+### 🏭 Production Environment
 ```bash
 # Clone the repository
 git clone <repository-url>

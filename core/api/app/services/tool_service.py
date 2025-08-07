@@ -10,8 +10,7 @@ from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 
 from app.models.tool import Tool, ToolStatus, ToolType
-from app.services.docker_service import DockerService
-from app.services.docker_service_enhanced import DockerServiceEnhanced
+from app.services.docker_service import DockerService, DockerServiceEnhanced
 from app.services.git_service import GitService
 from app.core.config import settings
 import logging
@@ -73,110 +72,182 @@ class ToolService:
         await db.commit()
         return True
     
-    async def install_tool(self, db: AsyncSession, git_url: str, name: str = None, 
+    async def install_tool(self, db: AsyncSession, git_url: str, name: Optional[str] = None, 
                           branch: str = "main") -> Dict[str, Any]:
-        """Install a tool from Git repository"""
+        """
+        Enhanced tool installation with comprehensive error handling and logging
+        """
+        from datetime import datetime
+        import traceback
+        
+        installation_log: Dict[str, Any] = {
+            "git_url": git_url,
+            "requested_name": name,
+            "branch": branch,
+            "steps_completed": [],
+            "errors": [],
+            "warnings": [],
+            "start_time": datetime.now().isoformat(),
+            "end_time": None
+        }
+        
         try:
-            # Validate repository first
-            validation = await self.git_service.validate_repository(git_url, branch)
-            if not validation["success"]:
-                return {
-                    "success": False,
-                    "error": f"Repository validation failed: {validation.get('error', 'Unknown error')}"
-                }
+            logger.info(f"🚀 Starting tool installation: {git_url}")
             
-            # Clone repository
-            clone_result = await self.git_service.clone_repository(git_url, branch)
+            # Step 1: Enhanced repository validation and cloning
+            installation_log["steps_completed"].append("repository_validation")
+            logger.info(f"📋 Step 1: Repository validation and cloning")
+            
+            clone_result = await self.git_service.validate_and_clone_repository(git_url)
+            
             if not clone_result["success"]:
+                installation_log["errors"].append({
+                    "step": "repository_validation",
+                    "error": clone_result["error"],
+                    "error_code": clone_result["error_code"],
+                    "troubleshooting": clone_result.get("troubleshooting", {})
+                })
+                installation_log["end_time"] = datetime.now().isoformat()
+                
                 return {
                     "success": False,
-                    "error": f"Failed to clone repository: {clone_result.get('error', 'Unknown error')}"
+                    "error": clone_result["error"],
+                    "error_code": clone_result["error_code"],
+                    "installation_log": installation_log,
+                    "troubleshooting": clone_result.get("troubleshooting", {}),
+                    "import_context": clone_result.get("import_context", {})
                 }
             
-            repo_path = clone_result["path"]
+            repo_path = clone_result["repo_path"]
+            metadata = clone_result["metadata"]
+            docker_config = clone_result["docker_config"]
             
-            try:
-                # Extract tool metadata
-                metadata = await self.git_service.extract_tool_metadata(repo_path)
+            # Step 2: Tool name resolution
+            installation_log["steps_completed"].append("name_resolution")
+            tool_name = name or metadata.get("name") or git_url.split("/")[-1].replace(".git", "")
+            logger.info(f"🏷️ Step 2: Tool name resolved to: {tool_name}")
+            
+            # Step 3: Check for existing tool
+            installation_log["steps_completed"].append("duplicate_check")
+            existing_tool = await self.get_tool_by_name(db, tool_name)
+            if existing_tool:
+                installation_log["warnings"].append(f"Tool with name '{tool_name}' already exists")
+                logger.warning(f"⚠️ Tool '{tool_name}' already exists")
                 
-                # Use provided name or extract from metadata
-                tool_name = name or metadata.get("name") or git_url.split("/")[-1].replace(".git", "")
-                
-                # Check if tool already exists
-                existing_tool = await self.get_tool_by_name(db, tool_name)
-                if existing_tool:
-                    return {
-                        "success": False,
-                        "error": f"Tool '{tool_name}' already exists"
-                    }
-                
-                # Create tool record
-                tool_data = {
-                    "name": tool_name,
-                    "display_name": metadata.get("description", tool_name).split('.')[0][:255],
-                    "description": metadata.get("description"),
-                    "git_url": git_url,
-                    "git_branch": branch,
-                    "git_commit": clone_result["commit_hash"],
-                    "tool_type": ToolType.WEB,  # Default, can be configured later
-                    "status": ToolStatus.PENDING,
-                    "dockerfile_path": metadata.get("dockerfile_path", "Dockerfile"),
-                    "port": metadata.get("port", settings.TOOL_DEFAULT_PORT),
-                    "health_check_endpoint": metadata.get("health_check", settings.TOOL_DEFAULT_HEALTH_CHECK),
-                    "version": metadata.get("version"),
-                    "author": metadata.get("author"),
-                    "license": metadata.get("license")
-                }
-                
-                # Add Docker Compose support
-                if metadata.get("has_compose"):
-                    tool_data["has_compose"] = True
-                    tool_data["compose_file"] = metadata.get("compose_file", "docker-compose.yml")
-                
-                # Add volumes configuration
-                if metadata.get("volumes"):
-                    import json
-                    # Convert list format to dict format for Docker API
-                    volumes_dict = {}
-                    for volume in metadata["volumes"]:
-                        if ":" in volume:
-                            host_path, container_path = volume.split(":", 1)
-                            volumes_dict[host_path] = container_path
-                    tool_data["volumes"] = json.dumps(volumes_dict)
-                
-                # Add environment variables
-                if metadata.get("environment"):
-                    import json
-                    env_dict = {}
-                    for env_var in metadata["environment"]:
-                        if "=" in env_var:
-                            key, value = env_var.split("=", 1)
-                            env_dict[key] = value
-                    tool_data["environment_variables"] = json.dumps(env_dict)
-                
-                tool = await self.create_tool(db, tool_data)
-                
-                # Build the tool
-                build_result = await self.build_tool(db, tool.id, repo_path)
-                
+                # Return error for duplicate
+                installation_log["end_time"] = datetime.now().isoformat()
                 return {
-                    "success": True,
-                    "tool_id": tool.id,
-                    "tool_name": tool.name,
-                    "build_success": build_result["success"],
-                    "build_message": build_result.get("message", "")
+                    "success": False,
+                    "error": f"Tool '{tool_name}' already exists",
+                    "error_code": "TOOL_EXISTS",
+                    "installation_log": installation_log
                 }
-                
-            finally:
-                # Clean up cloned repository
-                self.git_service.cleanup_repository(repo_path)
-                
+            
+            # Step 4: Create tool record
+            installation_log["steps_completed"].append("database_storage")
+            logger.info(f"💾 Step 4: Creating tool record in database")
+            
+            # Prepare tool data for database
+            tool_data = {
+                "name": tool_name,
+                "display_name": metadata.get("description", tool_name).split('.')[0][:255],
+                "description": metadata.get("description"),
+                "git_url": git_url,
+                "git_branch": branch,
+                "git_commit": clone_result.get("import_context", {}).get("metadata", {}).get("commit_hash"),
+                "tool_type": self._determine_tool_type(metadata),
+                "status": ToolStatus.PENDING,
+                "dockerfile_path": metadata.get("dockerfile_path", "Dockerfile"),
+                "port": metadata.get("port", settings.TOOL_DEFAULT_PORT),
+                "health_check_endpoint": metadata.get("health_check", settings.TOOL_DEFAULT_HEALTH_CHECK),
+                "version": metadata.get("version"),
+                "author": metadata.get("author"),
+                "license": metadata.get("license"),
+                "has_compose": metadata.get("has_compose", False),
+                "compose_file": metadata.get("compose_file")
+            }
+            
+            # Add volumes configuration
+            if metadata.get("volumes"):
+                volumes_dict = {}
+                for volume in metadata["volumes"]:
+                    if ":" in volume:
+                        host_path, container_path = volume.split(":", 1)
+                        volumes_dict[host_path] = container_path
+                tool_data["volumes"] = json.dumps(volumes_dict)
+            
+            # Add environment variables
+            if metadata.get("environment"):
+                env_dict = {}
+                for env_var in metadata["environment"]:
+                    if "=" in env_var:
+                        key, value = env_var.split("=", 1)
+                        env_dict[key] = value
+                tool_data["environment_variables"] = json.dumps(env_dict)
+            
+            tool = await self.create_tool(db, tool_data)
+            logger.info(f"✨ Created tool record: {tool_name} (ID: {tool.id})")
+            
+            # Step 5: Docker image building (optional, can be done later)
+            installation_log["steps_completed"].append("docker_build_preparation")
+            logger.info(f"🏗️ Step 5: Preparing for Docker build")
+            
+            build_result = {"success": True, "message": "Build prepared, use start_tool to build and run"}
+            if docker_config and not docker_config.get("valid", True):
+                installation_log["warnings"].append("Docker configuration has warnings, review before starting")
+                build_result["warnings"] = docker_config.get("warnings", [])
+            
+            # Step 6: Cleanup
+            installation_log["steps_completed"].append("cleanup")
+            self.git_service.cleanup_repository(repo_path)
+            
+            installation_log["end_time"] = datetime.now().isoformat()
+            
+            logger.info(f"🎉 Tool installation successful: {tool_name}")
+            
+            return {
+                "success": True,
+                "tool_id": tool.id,
+                "tool_name": tool.name,
+                "tool": {
+                    "id": tool.id,
+                    "name": tool.name,
+                    "description": tool.description,
+                    "version": tool.version,
+                    "has_compose": tool.has_compose,
+                    "status": tool.status.value
+                },
+                "metadata": metadata,
+                "docker_config": docker_config,
+                "installation_log": installation_log,
+                "build_result": build_result
+            }
+            
         except Exception as e:
-            logger.error(f"Error installing tool from {git_url}: {e}")
+            installation_log["end_time"] = datetime.now().isoformat()
+            installation_log["errors"].append({
+                "step": "unexpected_error",
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            })
+            
+            logger.error(f"💥 Unexpected error during tool installation: {str(e)}")
+            
             return {
                 "success": False,
-                "error": str(e)
+                "error": f"Installation failed: {str(e)}",
+                "error_code": "INSTALLATION_FAILED",
+                "installation_log": installation_log
             }
+    
+    def _determine_tool_type(self, metadata: Dict[str, Any]) -> ToolType:
+        """Determine tool type based on metadata"""
+        if metadata.get("has_compose"):
+            return ToolType.COMPOSE
+        elif metadata.get("port"):
+            return ToolType.WEB
+        else:
+            return ToolType.CLI
     
     async def build_tool(self, db: AsyncSession, tool_id: int, build_context: str = None) -> Dict[str, Any]:
         """Build a tool's Docker image"""
