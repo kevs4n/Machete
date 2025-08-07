@@ -56,6 +56,19 @@ coverage/
 tmp/
 temp/
 
+# Development temporary files
+*_temp.py
+*_test.py
+install_request.json
+add_*.py
+check_*.py
+fix_*.py
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Backup files
 *.bak
 *.backup
