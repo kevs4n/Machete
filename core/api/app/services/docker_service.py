@@ -15,11 +15,26 @@ class DockerService:
     """Service for managing Docker containers"""
     
     def __init__(self):
-        self.client = docker.from_env()
-        self.network_name = settings.DOCKER_NETWORK
+        try:
+            self.client = docker.from_env()
+            self.network_name = settings.DOCKER_NETWORK
+            self.is_available = True
+            logger.info("Docker client connected successfully")
+        except Exception as e:
+            logger.warning(f"Docker client unavailable: {e}")
+            self.client = None
+            self.network_name = None
+            self.is_available = False
     
     async def build_image(self, tool: Tool, build_context: str) -> Dict[str, Any]:
         """Build Docker image for a tool"""
+        if not self.is_available:
+            return {
+                "success": False,
+                "error": "Docker service is not available",
+                "logs": ["Docker client could not connect to Docker daemon"]
+            }
+            
         try:
             image_name = f"machete-{tool.name}"
             

@@ -41,14 +41,14 @@ services:
     container_name: machete-api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8090:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./tools:/app/tools
       - ./data:/app/data
     environment:
       - DEBUG=false
-      - DATABASE_URL=postgresql+asyncpg://machete:machete@database:5432/machete
+      - DATABASE_URL=postgresql+asyncpg://machete:machete_password@database:5432/machete
       - REDIS_URL=redis://redis:6379/0
       - DOCKER_SOCKET=/var/run/docker.sock
       - DOCKER_NETWORK=machete_machete-network
