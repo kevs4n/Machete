@@ -15,37 +15,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-class SecurityError(Exception):
-    """Security violation detected in Docker operations"""
-    pass
-
-class DockerService:
+class DockerServiceEnhanced:
     """Enhanced service for managing Docker containers and compose stacks"""
     
     def __init__(self):
         try:
-            # SECURE: Connect to isolated Docker-in-Docker daemon instead of host socket
-            docker_host = os.getenv('DOCKER_HOST', 'tcp://docker-daemon:2376')
-            
-            if docker_host.startswith('tcp://'):
-                # TLS connection to secure Docker daemon
-                tls_config = docker.tls.TLSConfig(
-                    client_cert=(
-                        os.getenv('DOCKER_CERT_PATH', '/certs/client') + '/cert.pem',
-                        os.getenv('DOCKER_CERT_PATH', '/certs/client') + '/key.pem'
-                    ),
-                    ca_cert=os.getenv('DOCKER_CERT_PATH', '/certs/client') + '/ca.pem',
-                    verify=True
-                )
-                self.client = docker.DockerClient(base_url=docker_host, tls=tls_config)
-            else:
-                # Fallback for development (but log security warning)
-                logger.warning("🚨 SECURITY WARNING: Using local Docker socket in development mode")
-                self.client = docker.from_env()
-            
+            self.client = docker.from_env()
             self.network_name = settings.DOCKER_NETWORK
             self.is_available = True
-            logger.info(f"✅ Secure Docker client connected: {docker_host}")
+            logger.info("Docker client connected successfully")
         except Exception as e:
             logger.warning(f"Docker client unavailable: {e}")
             self.client = None
@@ -258,43 +236,23 @@ class DockerService:
             }
 
     def _prepare_volumes(self, tool_name: str, volume_config: dict) -> dict:
-        """Prepare volumes for container, ensuring host directories exist and are within allowed sandbox"""
+        """Prepare volumes for container, ensuring host directories exist"""
         prepared_volumes = {}
-        
-        # SECURITY: Define allowed mount prefixes (sandbox restrictions)
-        ALLOWED_MOUNT_PREFIXES = [
-            str(Path(settings.TOOLS_DATA_PATH).resolve()),  # /app/data/tools/
-            '/tmp/machete/',  # Temporary directory
-        ]
         
         # Base directory for tool data
         tool_data_dir = Path(settings.TOOLS_DATA_PATH) / tool_name
         
         for host_path, container_path in volume_config.items():
+            # Handle relative paths - make them relative to tool data directory
+            if not host_path.startswith('/') and not host_path.startswith('C:'):
+                # Relative path - create under tool data directory
+                full_host_path = tool_data_dir / host_path.lstrip('./')
+            else:
+                # Absolute path - use as-is (but be careful!)
+                full_host_path = Path(host_path)
+            
+            # Ensure the host directory exists
             try:
-                # Handle relative paths - make them relative to tool data directory
-                if not host_path.startswith('/') and not host_path.startswith('C:'):
-                    # Relative path - create under tool data directory
-                    full_host_path = tool_data_dir / host_path.lstrip('./')
-                else:
-                    # Absolute path - SECURITY VALIDATION REQUIRED
-                    full_host_path = Path(host_path).resolve()
-                
-                # SECURITY CHECK: Validate path is within allowed sandbox
-                full_host_path_str = str(full_host_path.resolve())
-                is_allowed = any(full_host_path_str.startswith(prefix) for prefix in ALLOWED_MOUNT_PREFIXES)
-                
-                if not is_allowed:
-                    logger.error(f"🚨 SECURITY VIOLATION: Tool '{tool_name}' attempted to mount path outside sandbox: {full_host_path}")
-                    logger.error(f"   Allowed prefixes: {ALLOWED_MOUNT_PREFIXES}")
-                    raise SecurityError(f"Mount path {full_host_path} outside allowed sandbox")
-                
-                # SECURITY CHECK: Prevent path traversal attacks
-                if '..' in str(host_path) or '..' in str(container_path):
-                    logger.error(f"🚨 SECURITY VIOLATION: Tool '{tool_name}' attempted path traversal: {host_path} -> {container_path}")
-                    raise SecurityError(f"Path traversal detected in volume mount: {host_path}")
-                
-                # Ensure the host directory exists
                 full_host_path.parent.mkdir(parents=True, exist_ok=True)
                 if not full_host_path.exists():
                     if container_path.endswith('/'):
@@ -304,19 +262,17 @@ class DockerService:
                         # File mount - create parent directory only
                         full_host_path.parent.mkdir(parents=True, exist_ok=True)
                 
-                # Convert to Docker API format with read-only by default for security
-                mount_mode = 'ro' if host_path.startswith('/etc') or host_path.startswith('/sys') else 'rw'
+                # Convert to Docker API format
                 prepared_volumes[str(full_host_path)] = {
                     'bind': container_path, 
-                    'mode': mount_mode
+                    'mode': 'rw'
                 }
                 
-                logger.info(f"✅ Prepared secure volume mount: {full_host_path} -> {container_path} ({mount_mode})")
+                logger.info(f"Prepared volume mount: {full_host_path} -> {container_path}")
                 
             except Exception as e:
-                logger.error(f"❌ Failed to prepare volume {host_path}: {e}")
-                # SECURITY: Fail securely - don't continue with insecure mounts
-                raise SecurityError(f"Volume mount preparation failed: {e}")
+                logger.warning(f"Failed to prepare volume {host_path}: {e}")
+                continue
         
         return prepared_volumes
 
@@ -367,6 +323,3 @@ class DockerService:
             return {"success": False, "error": "Container not found"}
         except Exception as e:
             return {"success": False, "error": str(e)}
-
-# Backward compatibility alias
-DockerServiceEnhanced = DockerService

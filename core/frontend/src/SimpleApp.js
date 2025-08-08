@@ -194,7 +194,7 @@ function SimpleApp() {
                 Tool Registry
               </a>
               <a 
-                href="http://localhost:8080/api/docs" 
+                href="http://localhost:3001/api/docs" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 style={{

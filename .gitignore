@@ -1,5 +1,13 @@
 # MACHETE Platform .gitignore
 
+# 🚨 SECURITY - Never commit secrets!
+secrets/
+*.secret
+*.key
+*.pem
+*.crt
+*.p12
+
 # Environment files
 .env
 .env.local

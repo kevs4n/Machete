@@ -79,33 +79,33 @@ const ToolRegistry = () => {
     try {
       setInstalling(true);
       
-      // Prepare tool data for API
+      // Prepare tool data for API (matching backend ToolCreate model)
       const toolData = {
-        name: newTool.name.toLowerCase().replace(/\s+/g, '-'),
-        display_name: newTool.name,
-        description: newTool.description,
         git_url: newTool.git_url,
-        git_branch: newTool.git_branch,
-        tool_type: newTool.tool_type,
-        port: parseInt(newTool.port),
-        enabled: true
+        name: newTool.name.toLowerCase().replace(/\s+/g, '-'),
+        branch: newTool.git_branch
       };
       
-      await toolsAPI.install(toolData);
+      const response = await toolsAPI.install(toolData);
       
-      showSnackbar('Tool installation started successfully!', 'success');
-      setOpen(false);
-      setNewTool({
-        name: '',
-        git_url: '',
-        description: '',
-        git_branch: 'main',
-        tool_type: 'web',
-        port: 3000
-      });
-      
-      // Reload tools after installation
-      await loadTools();
+      // Check if installation was successful
+      if (response.data.success) {
+        showSnackbar('Tool installation started successfully!', 'success');
+        setOpen(false);
+        setNewTool({
+          name: '',
+          git_url: '',
+          description: '',
+          git_branch: 'main',
+          tool_type: 'web',
+          port: 3000
+        });
+        
+        // Reload tools after installation
+        await loadTools();
+      } else {
+        showSnackbar(`Installation failed: ${response.data.error}`, 'error');
+      }
     } catch (error) {
       console.error('Error installing tool:', error);
       showSnackbar(apiUtils.handleError(error, 'Failed to install tool'), 'error');

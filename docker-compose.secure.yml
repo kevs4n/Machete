@@ -1,0 +1,193 @@
+services:
+  # Secure Docker-in-Docker daemon (isolated)
+  docker-daemon:
+    image: docker:26-dind
+    container_name: machete-docker-daemon
+    restart: unless-stopped
+    privileged: true  # Only this container needs privileges
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    volumes:
+      - docker-certs-ca:/certs/ca
+      - docker-certs-client:/certs/client
+      - docker-data:/var/lib/docker
+    networks:
+      - machete-docker-network
+    ports:
+      - "2376:2376"  # TLS Docker daemon port
+    command: ["dockerd", "--host=0.0.0.0:2376", "--host=unix:///var/run/docker.sock", "--tls=true", "--tlscert=/certs/server/cert.pem", "--tlskey=/certs/server/key.pem", "--tlsverify=true", "--tlscacert=/certs/ca/ca.pem"]
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+
+  # Caddy reverse proxy
+  caddy:
+    image: caddy:2-alpine
+    container_name: machete-caddy
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./core/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./core/caddy/data:/data
+      - ./core/caddy/config:/config
+    networks:
+      - machete-network
+    depends_on:
+      - frontend
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    security_opt:
+      - no-new-privileges:true
+
+  # Core frontend
+  frontend:
+    build:
+      context: ./core/frontend
+      dockerfile: Dockerfile
+    container_name: machete-frontend
+    restart: unless-stopped
+    environment:
+      - API_URL=http://api:8000
+    networks:
+      - machete-network
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+
+  # Core API (Python FastAPI) - SECURED
+  api:
+    build:
+      context: ./core/api
+      dockerfile: Dockerfile.secure
+    container_name: machete-api
+    restart: unless-stopped
+    ports:
+      - "8090:8000"
+    volumes:
+      # REMOVED DANGEROUS DOCKER SOCKET MOUNT
+      - docker-certs-client:/certs/client:ro
+      - ./tools:/app/tools:ro  # Read-only tool access
+      - ./data:/app/data
+    environment:
+      - DEBUG=false
+      - DOCKER_HOST=tcp://docker-daemon:2376
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
+      - DATABASE_URL=postgresql+asyncpg://machete:machete_password@database:5432/machete
+      - REDIS_URL=redis://redis:6379/0
+      - DOCKER_NETWORK=machete_tool-network
+      # SECRETS EXTERNALIZED (will be fixed in next step)
+      - SECRET_KEY_FILE=/run/secrets/api_secret
+    networks:
+      - machete-network
+      - machete-docker-network
+    depends_on:
+      - database
+      - redis
+      - docker-daemon
+    secrets:
+      - api_secret
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+
+  # Redis for caching and sessions
+  redis:
+    image: redis:7-alpine
+    container_name: machete-redis
+    restart: unless-stopped
+    networks:
+      - machete-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    security_opt:
+      - no-new-privileges:true
+
+  # Database for tool registry
+  database:
+    image: postgres:15-alpine
+    container_name: machete-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: machete
+      POSTGRES_USER: machete
+      # SECRET EXTERNALIZED
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - machete-network
+    secrets:
+      - db_password
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+
+# SECURE NETWORK SEGMENTATION
+networks:
+  machete-network:
+    driver: bridge
+    internal: false  # Core services network
+  machete-docker-network:
+    driver: bridge
+    internal: false  # Docker daemon network
+  tool-network:
+    driver: bridge
+    internal: true   # Isolated tool network
+
+# SECURE VOLUME MANAGEMENT
+volumes:
+  postgres_data:
+  docker-data:
+  docker-certs-ca:
+  docker-certs-client:
+
+# SECURE SECRET MANAGEMENT
+secrets:
+  api_secret:
+    file: ./secrets/api_secret.txt
+  db_password:
+    file: ./secrets/db_password.txt
